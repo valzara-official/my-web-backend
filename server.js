@@ -4,12 +4,15 @@ const cors = require('cors');
 const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs'); // Thêm bcryptjs
+const rateLimit = require('express-rate-limit'); // Thêm express-rate-limit
 
 const Node = require('./models/Node');
 const User = require('./models/User'); // Thêm Model User
 
 const app = express();
 const JWT_SECRET = process.env.JWT_SECRET || 'valzaria_secret_key_2026';
+
+app.set('trust proxy', 1);
 
 app.use(cors({
   origin: [
@@ -91,6 +94,23 @@ app.post('/api/public/nodes/:id/click', async (req, res) => {
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
+});
+
+// Cấu hình giới hạn: Tối đa 5 lần thử đăng nhập trong 15 phút cho mỗi IP
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 phút
+  max: 5, // Tối đa 5 request
+  message: {
+    success: false,
+    message: 'Bạn đã thử đăng nhập sai quá nhiều lần. Vui lòng thử lại sau 15 phút.'
+  },
+  standardHeaders: true, // Trả về thông tin giới hạn trong header `RateLimit-*`
+  legacyHeaders: false, // Tắt header cũ `X-RateLimit-*`
+});
+
+// Áp dụng middleware loginLimiter trực tiếp vào route đăng nhập
+app.post('/api/auth/login', loginLimiter, async (req, res) => {
+  // Logic đăng nhập giữ nguyên...
 });
 
 const PORT = process.env.PORT || 5000;
