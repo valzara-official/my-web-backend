@@ -3,17 +3,22 @@ const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
-const bcrypt = require('bcryptjs'); // Thêm bcryptjs
-const rateLimit = require('express-rate-limit'); // Thêm express-rate-limit
+const bcrypt = require('bcryptjs');
+const rateLimit = require('express-rate-limit');
+const cookieParser = require('cookie-parser');
 
 const Node = require('./models/Node');
-const User = require('./models/User'); // Thêm Model User
+const User = require('./models/User');
 
 const app = express();
 const JWT_SECRET = process.env.JWT_SECRET || 'valzaria_secret_key_2026';
 
+// 1. Cấu hình Proxy & Middleware cơ bản
 app.set('trust proxy', 1);
+app.use(cookieParser());
+app.use(express.json());
 
+// 2. Cấu hình CORS
 app.use(cors({
   origin: [
     'https://valzaria.com',
@@ -23,9 +28,20 @@ app.use(cors({
   ],
   credentials: true
 }));
-app.use(express.json());
 
-// Hàm tạo tài khoản Admin mặc định vào MongoDB (nếu chưa có)
+// 3. Cấu hình Rate Limiter chống brute-force
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 phút
+  max: 5, // Tối đa 5 lần
+  message: {
+    success: false,
+    message: 'Bạn đã thử đăng nhập sai quá nhiều lần. Vui lòng thử lại sau 15 phút.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// 4. Hàm khởi tạo Admin mặc định trong MongoDB
 const initAdminAccount = async () => {
   try {
     const adminExist = await User.findOne({ username: 'admin' });
@@ -39,40 +55,66 @@ const initAdminAccount = async () => {
   }
 };
 
-// Kết nối MongoDB
+// 5. Kết nối MongoDB
 mongoose.connect(process.env.MONGO_URI)
   .then(() => {
     console.log('✅ Đã kết nối MongoDB thành công');
-    initAdminAccount(); // Khởi tạo admin sau khi kết nối DB
+    initAdminAccount();
   })
   .catch((err) => console.error('❌ Lỗi kết nối MongoDB:', err));
 
-// 🔑 ROUTE ĐĂNG NHẬP ADMIN (Dùng Bcrypt + MongoDB)
-app.post('/api/auth/login', async (req, res) => {
+// 6. Middleware xác thực Admin cho các route bảo mật
+const authenticateAdmin = (req, res, next) => {
+  const token = req.cookies.admin_token;
+  if (!token) return res.status(401).json({ message: 'Chưa đăng nhập hoặc phiên làm việc hết hạn' });
+
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch (err) {
+    return res.status(403).json({ message: 'Token không hợp lệ' });
+  }
+};
+
+// --- ROUTES ---
+
+// 🔑 Route Đăng nhập (Dùng Rate Limit + Bcrypt + HttpOnly Cookie)
+app.post('/api/auth/login', loginLimiter, async (req, res) => {
   try {
     const { username, password } = req.body;
-    
-    // 1. Tìm user trong MongoDB
     const user = await User.findOne({ username });
-    if (!user) {
+    
+    if (!user || !(await bcrypt.compare(password, user.password))) {
       return res.status(401).json({ success: false, message: 'Tài khoản hoặc mật khẩu không đúng' });
     }
 
-    // 2. So sánh mật khẩu nhập vào với mật khẩu đã mã hóa trong DB
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(401).json({ success: false, message: 'Tài khoản hoặc mật khẩu không đúng' });
-    }
-
-    // 3. Tạo JWT Token
     const token = jwt.sign({ userId: user._id, username: user.username }, JWT_SECRET, { expiresIn: '1d' });
-    return res.json({ success: true, token });
+
+    res.cookie('admin_token', token, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'none',
+      maxAge: 24 * 60 * 60 * 1000
+    });
+
+    return res.json({ success: true, message: 'Đăng nhập thành công' });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// --- Các route public & nodes giữ nguyên ---
+// 🚪 Route Đăng xuất
+app.post('/api/auth/logout', (req, res) => {
+  res.clearCookie('admin_token', {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'none'
+  });
+  return res.json({ success: true, message: 'Đã đăng xuất' });
+});
+
+// 🌐 Public Routes
 app.get('/api/public/nodes', async (req, res) => {
   try {
     const nodes = await Node.find();
@@ -96,21 +138,25 @@ app.post('/api/public/nodes/:id/click', async (req, res) => {
   }
 });
 
-// Cấu hình giới hạn: Tối đa 5 lần thử đăng nhập trong 15 phút cho mỗi IP
-const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 phút
-  max: 5, // Tối đa 5 request
-  message: {
-    success: false,
-    message: 'Bạn đã thử đăng nhập sai quá nhiều lần. Vui lòng thử lại sau 15 phút.'
-  },
-  standardHeaders: true, // Trả về thông tin giới hạn trong header `RateLimit-*`
-  legacyHeaders: false, // Tắt header cũ `X-RateLimit-*`
+// 🔒 Admin Protected Routes (Yêu cầu Cookie xác thực)
+app.get('/api/admin/nodes', authenticateAdmin, async (req, res) => {
+  try {
+    const nodes = await Node.find();
+    res.json(nodes);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
 });
 
-// Áp dụng middleware loginLimiter trực tiếp vào route đăng nhập
-app.post('/api/auth/login', loginLimiter, async (req, res) => {
-  // Logic đăng nhập giữ nguyên...
+app.post('/api/admin/nodes', authenticateAdmin, async (req, res) => {
+  try {
+    const { title, url, icon } = req.body;
+    const newNode = new Node({ title, url, icon });
+    await newNode.save();
+    res.status(201).json(newNode);
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
 });
 
 const PORT = process.env.PORT || 5000;
