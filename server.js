@@ -10,7 +10,7 @@ const User = require('./models/auth/User');
 const authRoutes = require('./routes/auth/authRoutes');
 const nodeRoutes = require('./routes/data/nodeRoutes');
 
-// 1. KHỞI TẠO UNG DỤNG EXPRESS TRƯỚC CÁC CẤU HÌNH
+// 1. Khởi tạo ứng dụng Express
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -29,8 +29,8 @@ app.use(cors({
 
 // 4. Rate Limiter chống brute-force đăng nhập
 const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 phút
-  max: 5, // Tối đa 5 lần
+  windowMs: 15 * 60 * 1000,
+  max: 5,
   message: {
     success: false,
     message: 'Bạn đã thử đăng nhập sai quá nhiều lần. Vui lòng thử lại sau 15 phút.'
@@ -39,32 +39,39 @@ const loginLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Nạp Limiter cho API Đăng nhập
+// Nạp Rate Limiter trực tiếp cho endpoint đăng nhập
 app.use('/api/auth/login', loginLimiter);
 
-// 5. NẠP ROUTER ĐÃ CHIA TỰC THƯ MỤC ROUTES
+// 5. Nạp Routers từ thư mục modular
 app.use('/api/auth', authRoutes);
 app.use('/api', nodeRoutes);
 
-// 6. Khởi tạo tài khoản Admin mặc định (Nếu chưa có trong DB)
+// 6. Khởi tạo / Đồng bộ hóa tài khoản Admin
 const initAdminAccount = async () => {
   try {
     const adminExist = await User.findOne({ username: 'admin' });
+    const hashedPassword = await bcrypt.hash('123654', 10);
+
     if (!adminExist) {
-      const hashedPassword = await bcrypt.hash('123654', 10);
       await User.create({ 
         username: 'admin', 
         password: hashedPassword,
-        role: 'ADMIN' // Bổ sung quyền ADMIN
+        role: 'ADMIN'
       });
-      console.log('✅ Đã khởi tạo tài khoản Admin trong MongoDB');
+      console.log('✅ Đã tạo tài khoản Admin mới (Mật khẩu: 123654)');
+    } else {
+      // Tự động cập nhật lại mật khẩu mới và role ADMIN nếu record cũ bị sai
+      adminExist.password = hashedPassword;
+      adminExist.role = 'ADMIN';
+      await adminExist.save();
+      console.log('✅ Đã đồng bộ mật khẩu 123654 và role ADMIN cho tài khoản admin');
     }
   } catch (err) {
-    console.error('❌ Lỗi khởi tạo Admin:', err.message);
+    console.error('❌ Lỗi khởi tạo/đồng bộ Admin:', err.message);
   }
 };
 
-// 7. Kết nối MongoDB & Lắng nghe cổng
+// 7. Kết nối MongoDB & Khởi chạy Server
 mongoose.connect(process.env.MONGO_URI)
   .then(() => {
     console.log('✅ Đã kết nối MongoDB thành công');
