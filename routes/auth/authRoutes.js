@@ -209,4 +209,33 @@ router.put('/change-password', authenticateToken, async (req, res) => {
   }
 });
 
+// 9. API CẬP NHẬT TÀI KHOẢN (Dành cho Admin sửa role, username hoặc reset password)
+router.put('/users/:id', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'ADMIN') {
+      return res.status(403).json({ success: false, message: 'Chỉ Admin mới có quyền chỉnh sửa tài khoản' });
+    }
+
+    const { username, password, role } = req.body;
+    const user = await User.findById(req.params.id);
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy tài khoản' });
+    }
+
+    if (username) user.username = username.trim();
+    if (role && ['ADMIN', 'LEADER', 'USER'].includes(role)) {
+      user.role = role;
+    }
+    if (password && password.trim() !== '') {
+      user.password = await bcrypt.hash(password, 10);
+    }
+
+    await user.save();
+    res.json({ success: true, message: 'Cập nhật tài khoản thành công' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Lỗi hệ thống khi cập nhật tài khoản' });
+  }
+});
+
 module.exports = router;
