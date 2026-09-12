@@ -20,13 +20,10 @@ app.use(express.json());
 
 // 2. Cấu hình CORS
 app.use(cors({
-  origin: [
-    'https://valzaria.com',
-    'https://www.valzaria.com',
-    'https://my-web-frontend.vercel.app',
-    'http://localhost:5173'
-  ],
-  credentials: true
+  origin: ['https://valzaria.com', 'https://www.valzaria.com'],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
 // 3. Cấu hình Rate Limiter chống brute-force
@@ -79,12 +76,12 @@ const authenticateAdmin = (req, res, next) => {
 
 // --- ROUTES ---
 
-// 🔑 Route Đăng nhập (Dùng Rate Limit + Bcrypt + HttpOnly Cookie)
+// 🔑 Route Đăng nhập
 app.post('/api/auth/login', loginLimiter, async (req, res) => {
   try {
     const { username, password } = req.body;
     const user = await User.findOne({ username });
-    
+
     if (!user || !(await bcrypt.compare(password, user.password))) {
       return res.status(401).json({ success: false, message: 'Tài khoản hoặc mật khẩu không đúng' });
     }
@@ -150,12 +147,28 @@ app.get('/api/admin/nodes', authenticateAdmin, async (req, res) => {
 
 app.post('/api/admin/nodes', authenticateAdmin, async (req, res) => {
   try {
-    const { title, url, icon } = req.body;
-    const newNode = new Node({ title, url, icon });
+    const { title, url, icon, status, description } = req.body;
+    const newNode = new Node({ title, url, icon, status, description });
     await newNode.save();
     res.status(201).json(newNode);
   } catch (err) {
     res.status(400).json({ message: err.message });
+  }
+});
+
+// 🗑️ Route Xóa Nhánh (Bổ sung mới)
+app.delete('/api/admin/nodes/:id', authenticateAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const deletedNode = await Node.findByIdAndDelete(id);
+
+    if (!deletedNode) {
+      return res.status(404).json({ message: 'Không tìm thấy nhánh cần xóa' });
+    }
+
+    res.json({ success: true, message: 'Xóa nhánh thành công!' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
   }
 });
 
