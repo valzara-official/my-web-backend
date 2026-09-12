@@ -36,13 +36,12 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Tên tài khoản đã tồn tại' });
     }
 
-    // Mã hóa mật khẩu an toàn bằng Bcrypt
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const newUser = new User({
       username: username.trim(),
       password: hashedPassword,
-      role: 'USER' // Khách tự đăng ký luôn là USER
+      role: 'USER'
     });
 
     await newUser.save();
@@ -67,20 +66,17 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ success: false, message: 'Tài khoản hoặc mật khẩu không chính xác' });
     }
 
-    // So sánh mật khẩu đã mã hóa
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
       return res.status(401).json({ success: false, message: 'Tài khoản hoặc mật khẩu không chính xác' });
     }
 
-    // Tạo JWT Token chứa ID, Username và Role
     const token = jwt.sign(
       { userId: user._id, username: user.username, role: user.role },
       JWT_SECRET,
       { expiresIn: '1d' }
     );
 
-    // Gửi Cookie về phía Client
     res.cookie('admin_token', token, {
       httpOnly: true,
       secure: true,
@@ -167,13 +163,35 @@ router.post('/create-leader', authenticateToken, async (req, res) => {
   }
 });
 
-// 6. API ĐỔI MẬT KHẨU ADMIN
-router.put('/change-admin-password', authenticateToken, async (req, res) => {
+// 6. API LẤY DANH SÁCH TẤT CẢ USER/LEADER (Dành cho Admin quản lý)
+router.get('/users', authenticateToken, async (req, res) => {
   try {
     if (req.user.role !== 'ADMIN') {
-      return res.status(403).json({ success: false, message: 'Chỉ Admin mới có quyền thực hiện thao tác này' });
+      return res.status(403).json({ success: false, message: 'Không có quyền truy cập danh sách người dùng' });
     }
+    const users = await User.find().select('-password').sort({ createdAt: -1 });
+    res.json(users);
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Lỗi lấy danh sách tài khoản' });
+  }
+});
 
+// 7. API XÓA TÀI KHOẢN (Dành cho Admin)
+router.delete('/users/:id', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'ADMIN') {
+      return res.status(403).json({ success: false, message: 'Chỉ Admin mới có quyền xóa tài khoản' });
+    }
+    await User.findByIdAndDelete(req.params.id);
+    res.json({ success: true, message: 'Xóa tài khoản thành công' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Lỗi khi xóa tài khoản' });
+  }
+});
+
+// 8. API ĐỔI MẬT KHẨU
+router.put('/change-password', authenticateToken, async (req, res) => {
+  try {
     const { oldPassword, newPassword } = req.body;
     const user = await User.findById(req.user.userId);
 
@@ -185,7 +203,7 @@ router.put('/change-admin-password', authenticateToken, async (req, res) => {
     user.password = await bcrypt.hash(newPassword, 10);
     await user.save();
 
-    res.json({ success: true, message: 'Cập nhật mật khẩu Admin thành công!' });
+    res.json({ success: true, message: 'Cập nhật mật khẩu thành công!' });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Lỗi hệ thống khi đổi mật khẩu' });
   }
