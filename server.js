@@ -51,7 +51,7 @@ const initAdminAccount = async () => {
   try {
     const adminExist = await User.findOne({ username: 'admin' });
     if (!adminExist) {
-      const hashedPassword = await bcrypt.hash('admin123', 10);
+      const hashedPassword = await bcrypt.hash('123654', 10);
       await User.create({ 
         username: 'admin', 
         password: hashedPassword,
