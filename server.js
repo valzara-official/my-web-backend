@@ -74,7 +74,7 @@ const authenticateAdmin = (req, res, next) => {
   }
 };
 
-// --- ROUTES ---
+// --- ROUTES AUTHENTICATION ---
 
 // 🔑 Route Đăng nhập
 app.post('/api/auth/login', loginLimiter, async (req, res) => {
@@ -92,6 +92,7 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
       httpOnly: true,
       secure: true,
       sameSite: 'none',
+      path: '/',
       maxAge: 24 * 60 * 60 * 1000
     });
 
@@ -101,17 +102,24 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
   }
 });
 
+// 🔍 Route Kiểm tra trạng thái phiên làm việc (Dùng cho Frontend khi F5)
+app.get('/api/auth/me', authenticateAdmin, (req, res) => {
+  res.json({ success: true, user: req.user });
+});
+
 // 🚪 Route Đăng xuất
 app.post('/api/auth/logout', (req, res) => {
   res.clearCookie('admin_token', {
     httpOnly: true,
     secure: true,
-    sameSite: 'none'
+    sameSite: 'none',
+    path: '/'
   });
   return res.json({ success: true, message: 'Đã đăng xuất' });
 });
 
-// 🌐 Public Routes
+// --- PUBLIC ROUTES ---
+
 app.get('/api/public/nodes', async (req, res) => {
   try {
     const nodes = await Node.find();
@@ -135,7 +143,8 @@ app.post('/api/public/nodes/:id/click', async (req, res) => {
   }
 });
 
-// 🔒 Admin Protected Routes (Yêu cầu Cookie xác thực)
+// --- ADMIN PROTECTED ROUTES ---
+
 app.get('/api/admin/nodes', authenticateAdmin, async (req, res) => {
   try {
     const nodes = await Node.find();
@@ -156,7 +165,6 @@ app.post('/api/admin/nodes', authenticateAdmin, async (req, res) => {
   }
 });
 
-// 🗑️ Route Xóa Nhánh (Bổ sung mới)
 app.delete('/api/admin/nodes/:id', authenticateAdmin, async (req, res) => {
   try {
     const { id } = req.params;
