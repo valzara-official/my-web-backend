@@ -171,4 +171,19 @@ router.get('/me', isAuthenticated, async (req, res) => {
   }
 });
 
+// 8. Đăng xuất (POST /api/auth/logout)
+router.post('/logout', (req, res) => {
+  if (req.session) {
+    req.session.destroy(err => {
+      if (err) {
+        return res.status(500).json({ success: false, message: 'Lỗi khi đăng xuất' });
+      }
+      res.clearCookie('connect.sid', { secure: true, sameSite: 'none' });
+      return res.json({ success: true, message: 'Đăng xuất thành công' });
+    });
+  } else {
+    return res.json({ success: true, message: 'Đã đăng xuất' });
+  }
+});
+
 module.exports = router;

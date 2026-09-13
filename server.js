@@ -9,6 +9,7 @@ const bcrypt = require('bcryptjs');
 const User = require('./models/auth/User');
 const authRoutes = require('./routes/auth/authRoutes');
 const nodeRoutes = require('./routes/data/nodeRoutes');
+const session = require('express-session');
 
 // 1. Khởi tạo ứng dụng Express
 const app = express();
@@ -19,9 +20,23 @@ app.set('trust proxy', 1);
 app.use(cookieParser());
 app.use(express.json());
 
+// 🌟 THÊM CẤU HÌNH EXPRESS-SESSION Ở ĐÂY (Đặt trước CORS và Routes)
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'valzaria_secret_key_change_this',
+  resave: false,
+  saveUninitialized: false,
+  proxy: true, // Quan trọng vì chạy trên Render sau proxy
+  cookie: {
+    httpOnly: true,
+    secure: true,      // Bắt buộc true vì Render chạy HTTPS
+    sameSite: 'none',  // Bắt buộc 'none' vì lệch domain Frontend - Backend
+    maxAge: 7 * 24 * 60 * 60 * 1000 // Hạn session: 7 ngày
+  }
+}));
+
 // 3. Cấu hình CORS (Đã cập nhật để nhận diện đúng Domain Frontend của bạn)
 const allowedOrigins = [
-  'https://valzaria.com', 
+  'https://valzaria.com',
   'https://www.valzaria.com',
   'https://my-web-backend-i49k.onrender.com', // Thay bằng domain frontend thực tế nếu khác
   'http://localhost:5173',
