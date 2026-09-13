@@ -22,7 +22,7 @@ const authenticateToken = (req, res, next) => {
   }
 };
 
-// Hàm helper hỗ trợ tự sinh mã code (Uxxxxxx / Lxxxxxx / Axxxxxx) nếu chưa có
+// Hàm helper sinh mã an toàn, tránh trùng lặp
 async function generateUserCode(role) {
   const prefixMap = { ADMIN: 'A', LEADER: 'L', USER: 'U' };
   const prefix = prefixMap[role] || 'U';
@@ -30,7 +30,7 @@ async function generateUserCode(role) {
   return `${prefix}${String(count + 1).padStart(6, '0')}`;
 }
 
-// 1. API ĐĂNG KÝ (Khách tự đăng ký - Mặc định role USER)
+// 1. API ĐĂNG KÝ
 router.post('/register', async (req, res) => {
   try {
     const { username, password, email, phone, address, gender, note } = req.body;
@@ -60,10 +60,10 @@ router.post('/register', async (req, res) => {
     });
 
     await newUser.save();
-    res.json({ success: true, message: 'Đăng ký tài khoản thành công' });
+    return res.json({ success: true, message: 'Đăng ký tài khoản thành công' });
   } catch (error) {
-    console.error('Lỗi đăng ký:', error);
-    res.status(500).json({ success: false, message: 'Lỗi hệ thống khi đăng ký' });
+    console.error('Lỗi đăng ký chi tiết:', error);
+    return res.status(500).json({ success: false, message: 'Lỗi hệ thống khi đăng ký: ' + error.message });
   }
 });
 
@@ -100,7 +100,7 @@ router.post('/login', async (req, res) => {
       maxAge: 24 * 60 * 60 * 1000
     });
 
-    res.json({
+    return res.json({
       success: true,
       message: 'Đăng nhập thành công',
       user: {
@@ -114,11 +114,11 @@ router.post('/login', async (req, res) => {
     });
   } catch (error) {
     console.error('Lỗi đăng nhập:', error);
-    res.status(500).json({ success: false, message: 'Lỗi hệ thống khi đăng nhập' });
+    return res.status(500).json({ success: false, message: 'Lỗi hệ thống khi đăng nhập' });
   }
 });
 
-// 3. API CHECK ME (Xác thực lại phiên làm việc khi F5)
+// 3. API CHECK ME
 router.get('/me', authenticateToken, async (req, res) => {
   try {
     const user = await User.findById(req.user.userId).select('-password');
@@ -126,7 +126,7 @@ router.get('/me', authenticateToken, async (req, res) => {
       return res.status(404).json({ success: false, message: 'Tài khoản không tồn tại' });
     }
 
-    res.json({
+    return res.json({
       success: true,
       user: {
         id: user._id,
@@ -141,7 +141,7 @@ router.get('/me', authenticateToken, async (req, res) => {
       }
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Lỗi xác thực phiên làm việc' });
+    return res.status(500).json({ success: false, message: 'Lỗi xác thực phiên làm việc' });
   }
 });
 
@@ -156,7 +156,7 @@ router.post('/logout', (req, res) => {
   return res.json({ success: true, message: 'Đã đăng xuất thành công' });
 });
 
-// 5. API TẠO LEADER (Chỉ ADMIN mới có quyền thực thi)
+// 5. API TẠO LEADER
 router.post('/create-leader', authenticateToken, async (req, res) => {
   try {
     if (req.user.role !== 'ADMIN') {
@@ -189,35 +189,36 @@ router.post('/create-leader', authenticateToken, async (req, res) => {
     });
 
     await newLeader.save();
-    res.json({ success: true, message: 'Tạo tài khoản Leader thành công' });
+    return res.json({ success: true, message: 'Tạo tài khoản Leader thành công' });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Lỗi hệ thống khi tạo Leader' });
+    console.error('Lỗi tạo leader:', error);
+    return res.status(500).json({ success: false, message: 'Lỗi hệ thống khi tạo Leader: ' + error.message });
   }
 });
 
-// 6. API LẤY DANH SÁCH TẤT CẢ USER/LEADER (Dành cho Admin quản lý)
+// 6. API LẤY DANH SÁCH USER/LEADER
 router.get('/users', authenticateToken, async (req, res) => {
   try {
     if (req.user.role !== 'ADMIN') {
       return res.status(403).json({ success: false, message: 'Không có quyền truy cập danh sách người dùng' });
     }
     const users = await User.find().select('-password').sort({ createdAt: -1 });
-    res.json(users);
+    return res.json(users);
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Lỗi lấy danh sách tài khoản' });
+    return res.status(500).json({ success: false, message: 'Lỗi lấy danh sách tài khoản' });
   }
 });
 
-// 7. API XÓA TÀI KHOẢN (Dành cho Admin)
+// 7. API XÓA TÀI KHOẢN
 router.delete('/users/:id', authenticateToken, async (req, res) => {
   try {
     if (req.user.role !== 'ADMIN') {
       return res.status(403).json({ success: false, message: 'Chỉ Admin mới có quyền xóa tài khoản' });
     }
     await User.findByIdAndDelete(req.params.id);
-    res.json({ success: true, message: 'Xóa tài khoản thành công' });
+    return res.json({ success: true, message: 'Xóa tài khoản thành công' });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Lỗi khi xóa tài khoản' });
+    return res.status(500).json({ success: false, message: 'Lỗi khi xóa tài khoản' });
   }
 });
 
@@ -235,13 +236,13 @@ router.put('/change-password', authenticateToken, async (req, res) => {
     user.password = await bcrypt.hash(newPassword, 10);
     await user.save();
 
-    res.json({ success: true, message: 'Cập nhật mật khẩu thành công!' });
+    return res.json({ success: true, message: 'Cập nhật mật khẩu thành công!' });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Lỗi hệ thống khi đổi mật khẩu' });
+    return res.status(500).json({ success: false, message: 'Lỗi hệ thống khi đổi mật khẩu' });
   }
 });
 
-// 9. API CẬP NHẬT TÀI KHOẢN (Dành cho Admin sửa thông tin, role, password...)
+// 9. API CẬP NHẬT TÀI KHOẢN
 router.put('/users/:id', authenticateToken, async (req, res) => {
   try {
     if (req.user.role !== 'ADMIN') {
@@ -258,7 +259,6 @@ router.put('/users/:id', authenticateToken, async (req, res) => {
     if (username) user.username = username.trim();
     if (code) user.code = code.trim();
     
-    // Nếu đổi role mà role thay đổi, có thể tự động sinh lại code mới nếu chưa có mã tùy chỉnh
     if (role && ['ADMIN', 'LEADER', 'USER'].includes(role)) {
       if (user.role !== role && !code) {
         user.code = await generateUserCode(role);
@@ -277,10 +277,10 @@ router.put('/users/:id', authenticateToken, async (req, res) => {
     }
 
     await user.save();
-    res.json({ success: true, message: 'Cập nhật tài khoản thành công', user });
+    return res.json({ success: true, message: 'Cập nhật tài khoản thành công', user });
   } catch (error) {
     console.error('Lỗi cập nhật user:', error);
-    res.status(500).json({ success: false, message: 'Lỗi hệ thống khi cập nhật tài khoản' });
+    return res.status(500).json({ success: false, message: 'Lỗi hệ thống khi cập nhật tài khoản: ' + error.message });
   }
 });
 
