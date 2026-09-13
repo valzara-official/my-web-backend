@@ -149,4 +149,26 @@ router.post('/ping', isAuthenticated, async (req, res) => {
   }
 });
 
+// 7. API lấy thông tin user đang đăng nhập (GET /api/auth/me)
+router.get('/me', isAuthenticated, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select('-password');
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy người dùng' });
+    }
+    res.json({
+      success: true,
+      user: {
+        id: user._id,
+        username: user.username,
+        role: user.role,
+        email: user.email,
+        phone: user.phone
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 module.exports = router;
