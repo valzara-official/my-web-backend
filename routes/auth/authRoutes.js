@@ -3,6 +3,16 @@ const router = express.Router();
 const User = require('../../models/auth/User');
 const bcrypt = require('bcryptjs');
 
+// Middleware kiểm tra xem người dùng đã đăng nhập chưa (dựa vào session)
+const isAuthenticated = (req, res, next) => {
+  // Kiểm tra nếu có session.userId hoặc user đã đăng nhập
+  if (req.session && req.session.userId) {
+    req.user = { id: req.session.userId };
+    return next();
+  }
+  return res.status(401).json({ success: false, message: 'Unauthorized: Chưa đăng nhập' });
+};
+
 // 1. Đăng ký / Thêm thành viên mới (POST /api/auth/register)
 router.post('/register', async (req, res) => {
   try {
@@ -22,7 +32,9 @@ router.post('/register', async (req, res) => {
       phone,
       address,
       gender,
-      note
+      note,
+      isOnline: false,
+      lastActive: new Date()
     });
 
     res.status(201).json({ success: true, message: 'Thêm thành viên thành công!', data: newUser });
@@ -46,7 +58,14 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ success: false, message: 'Tên đăng nhập hoặc mật khẩu không đúng!' });
     }
 
-    // Lưu thông tin vào Session hoặc trả về dữ liệu user (tùy thuộc vào cách bạn quản lý auth)
+    // QUAN TRỌNG: Lưu ID vào session để các request sau (như /ping) biết ai đang gửi
+    if (req.session) {
+      req.session.userId = user._id;
+    }
+
+    // Cập nhật trạng thái ngay khi đăng nhập thành công
+    await User.findByIdAndUpdate(user._id, { isOnline: true, lastActive: new Date() });
+
     res.json({
       success: true,
       message: 'Đăng nhập thành công!',
@@ -64,6 +83,13 @@ router.post('/login', async (req, res) => {
 // 3. Lấy danh sách toàn bộ users (GET /api/auth/users)
 router.get('/users', async (req, res) => {
   try {
+    // Tùy chọn: Có thể viết thêm hàm quét nhanh xem ai quá 2 phút không gửi ping thì đổi thành offline ở đây trước khi trả về
+    const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000);
+    await User.updateMany(
+      { lastActive: { $lt: twoMinutesAgo }, isOnline: true },
+      { isOnline: false }
+    );
+
     const users = await User.find().select('-password');
     res.json(users);
   } catch (error) {
@@ -77,7 +103,6 @@ router.put('/users/:id', async (req, res) => {
     const { id } = req.params;
     const updateData = { ...req.body };
 
-    // Nếu để trống mật khẩu thì không cập nhật trường password để tránh lỗi ghi đè
     if (!updateData.password || updateData.password.trim() === '') {
       delete updateData.password;
     } else {
@@ -108,6 +133,19 @@ router.delete('/users/:id', async (req, res) => {
     res.json({ success: true, message: 'Xóa thành viên thành công', data: deletedUser });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 6. API nhận tín hiệu Heartbeat từ Frontend (POST /api/auth/ping)
+router.post('/ping', isAuthenticated, async (req, res) => {
+  try {
+    await User.findByIdAndUpdate(req.user.id, {
+      lastActive: new Date(),
+      isOnline: true
+    });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Lỗi server khi ping' });
   }
 });
 
