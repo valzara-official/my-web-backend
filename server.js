@@ -19,13 +19,33 @@ app.set('trust proxy', 1);
 app.use(cookieParser());
 app.use(express.json());
 
-// 3. Cấu hình CORS
+// 3. Cấu hình CORS (Đã cập nhật để nhận diện đúng Domain Frontend của bạn)
+const allowedOrigins = [
+  'https://valzaria.com', 
+  'https://www.valzaria.com',
+  'https://my-web-backend-i49k.onrender.com', // Thay bằng domain frontend thực tế nếu khác
+  'http://localhost:5173',
+  'http://localhost:3000'
+];
+
 app.use(cors({
-  origin: ['https://valzaria.com', 'https://www.valzaria.com'],
+  origin: function (origin, callback) {
+    // Cho phép các request không có origin (như Postman hoặc mobile app) hoặc nằm trong danh sách cho phép
+    if (!origin || allowedOrigins.indexOf(origin) !== -1 || origin.endsWith('.onrender.com')) {
+      callback(null, true);
+    } else {
+      callback(new Error('CORS policy violation: Origin not allowed'));
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
+
+// Route kiểm tra server sống (heartbeat / ping)
+app.post('/api/auth/ping', (req, res) => {
+  return res.status(200).json({ success: true, message: 'Pong!' });
+});
 
 // 4. Rate Limiter chống brute-force đăng nhập
 const loginLimiter = rateLimit({
@@ -60,7 +80,6 @@ const initAdminAccount = async () => {
       });
       console.log('✅ Đã tạo tài khoản Admin mới (Mật khẩu: 123654)');
     } else {
-      // Tự động cập nhật lại mật khẩu mới và role ADMIN nếu record cũ bị sai
       adminExist.password = hashedPassword;
       adminExist.role = 'ADMIN';
       await adminExist.save();
