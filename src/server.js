@@ -1,4 +1,3 @@
-// Đường dẫn file: src/server.js
 const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors');
@@ -18,10 +17,26 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-// Cấu hình CORS cho phép Frontend giao tiếp (gửi kèm cookie credentials: true)
+// Danh sách các Domain được phép gọi API (Hỗ trợ cả Localhost, Domain chính thức và các nhánh Vercel)
+const allowedOrigins = [
+  'http://localhost:5173',
+  'https://www.valzaria.com',
+  process.env.CLIENT_URL
+].filter(Boolean); // Lọc bỏ giá trị undefined nếu chưa khai báo
+
+// Cấu hình CORS chuẩn cho phép gửi kèm cookie credentials
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || 'http://localhost:5173',
+    origin: function (origin, callback) {
+      // Cho phép các tool test API như Postman hoặc server-to-server request không có origin
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.indexOf(origin) !== -1 || allowedOrigins.some(domain => origin.endsWith('.vercel.app'))) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     credentials: true,
   })
 );
