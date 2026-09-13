@@ -19,6 +19,19 @@ const userSchema = new mongoose.Schema({
   createdAt: {
     type: Date,
     default: Date.now
+  },
+  // 👇 THÊM 3 TRƯỜNG NÀY VÀO ĐỂ HỖ TRỢ THỐNG KÊ ONLINE / THỜI GIAN HOẠT ĐỘNG
+  isOnline: {
+    type: Boolean,
+    default: false
+  },
+  lastActive: {
+    type: Date,
+    default: Date.now
+  },
+  totalActiveMinutes: {
+    type: Number,
+    default: 0
   }
 });
 
