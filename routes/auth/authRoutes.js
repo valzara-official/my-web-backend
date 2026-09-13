@@ -22,10 +22,18 @@ const authenticateToken = (req, res, next) => {
   }
 };
 
+// Hàm helper hỗ trợ tự sinh mã code (Uxxxxxx / Lxxxxxx / Axxxxxx) nếu chưa có
+async function generateUserCode(role) {
+  const prefixMap = { ADMIN: 'A', LEADER: 'L', USER: 'U' };
+  const prefix = prefixMap[role] || 'U';
+  const count = await User.countDocuments({ role });
+  return `${prefix}${String(count + 1).padStart(6, '0')}`;
+}
+
 // 1. API ĐĂNG KÝ (Khách tự đăng ký - Mặc định role USER)
 router.post('/register', async (req, res) => {
   try {
-    const { username, password } = req.body;
+    const { username, password, email, phone, address, gender, note } = req.body;
 
     if (!username || !password) {
       return res.status(400).json({ success: false, message: 'Vui lòng nhập đầy đủ tên tài khoản và mật khẩu' });
@@ -37,11 +45,18 @@ router.post('/register', async (req, res) => {
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
+    const code = await generateUserCode('USER');
 
     const newUser = new User({
       username: username.trim(),
       password: hashedPassword,
-      role: 'USER'
+      role: 'USER',
+      code,
+      email: email ? email.trim() : '',
+      phone: phone ? phone.trim() : '',
+      address: address ? address.trim() : '',
+      gender: gender || 'Khác',
+      note: note || ''
     });
 
     await newUser.save();
@@ -91,7 +106,10 @@ router.post('/login', async (req, res) => {
       user: {
         id: user._id,
         username: user.username,
-        role: user.role
+        role: user.role,
+        code: user.code,
+        email: user.email,
+        phone: user.phone
       }
     });
   } catch (error) {
@@ -113,7 +131,13 @@ router.get('/me', authenticateToken, async (req, res) => {
       user: {
         id: user._id,
         username: user.username,
-        role: user.role
+        role: user.role,
+        code: user.code,
+        email: user.email,
+        phone: user.phone,
+        address: user.address,
+        gender: user.gender,
+        note: user.note
       }
     });
   } catch (error) {
@@ -139,7 +163,7 @@ router.post('/create-leader', authenticateToken, async (req, res) => {
       return res.status(403).json({ success: false, message: 'Chỉ Admin mới có quyền tạo tài khoản Leader' });
     }
 
-    const { username, password } = req.body;
+    const { username, password, email, phone, address, gender, note } = req.body;
     if (!username || !password) {
       return res.status(400).json({ success: false, message: 'Vui lòng cung cấp username và password cho Leader' });
     }
@@ -150,10 +174,18 @@ router.post('/create-leader', authenticateToken, async (req, res) => {
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
+    const code = await generateUserCode('LEADER');
+
     const newLeader = new User({
       username: username.trim(),
       password: hashedPassword,
-      role: 'LEADER'
+      role: 'LEADER',
+      code,
+      email: email ? email.trim() : '',
+      phone: phone ? phone.trim() : '',
+      address: address ? address.trim() : '',
+      gender: gender || 'Khác',
+      note: note || ''
     });
 
     await newLeader.save();
@@ -209,14 +241,14 @@ router.put('/change-password', authenticateToken, async (req, res) => {
   }
 });
 
-// 9. API CẬP NHẬT TÀI KHOẢN (Dành cho Admin sửa role, username hoặc reset password)
+// 9. API CẬP NHẬT TÀI KHOẢN (Dành cho Admin sửa thông tin, role, password...)
 router.put('/users/:id', authenticateToken, async (req, res) => {
   try {
     if (req.user.role !== 'ADMIN') {
       return res.status(403).json({ success: false, message: 'Chỉ Admin mới có quyền chỉnh sửa tài khoản' });
     }
 
-    const { username, password, role } = req.body;
+    const { username, password, role, email, phone, address, gender, note, code } = req.body;
     const user = await User.findById(req.params.id);
 
     if (!user) {
@@ -224,16 +256,30 @@ router.put('/users/:id', authenticateToken, async (req, res) => {
     }
 
     if (username) user.username = username.trim();
+    if (code) user.code = code.trim();
+    
+    // Nếu đổi role mà role thay đổi, có thể tự động sinh lại code mới nếu chưa có mã tùy chỉnh
     if (role && ['ADMIN', 'LEADER', 'USER'].includes(role)) {
+      if (user.role !== role && !code) {
+        user.code = await generateUserCode(role);
+      }
       user.role = role;
     }
+
+    if (email !== undefined) user.email = email.trim();
+    if (phone !== undefined) user.phone = phone.trim();
+    if (address !== undefined) user.address = address.trim();
+    if (gender) user.gender = gender;
+    if (note !== undefined) user.note = note;
+
     if (password && password.trim() !== '') {
       user.password = await bcrypt.hash(password, 10);
     }
 
     await user.save();
-    res.json({ success: true, message: 'Cập nhật tài khoản thành công' });
+    res.json({ success: true, message: 'Cập nhật tài khoản thành công', user });
   } catch (error) {
+    console.error('Lỗi cập nhật user:', error);
     res.status(500).json({ success: false, message: 'Lỗi hệ thống khi cập nhật tài khoản' });
   }
 });
