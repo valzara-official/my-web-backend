@@ -67,11 +67,11 @@ exports.login = async (req, res) => {
 
     const token = generateToken(user._id, user.role);
 
-    // Lưu token vào HttpOnly Cookie để bảo mật
+    // Lưu token vào HttpOnly Cookie chuẩn cho cấu hình Cross-Domain (Vercel -> Render)
     res.cookie('token', token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
+      secure: true,
+      sameSite: 'none',
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 ngày
     });
 
@@ -94,8 +94,8 @@ exports.logout = async (req, res) => {
   try {
     res.clearCookie('token', {
       httpOnly: true,
-      sameSite: 'strict',
-      secure: process.env.NODE_ENV === 'production',
+      secure: true,
+      sameSite: 'none',
     });
     res.status(200).json({ success: true, message: 'Đăng xuất thành công!' });
   } catch (error) {
@@ -106,7 +106,6 @@ exports.logout = async (req, res) => {
 // Kiểm tra trạng thái xác thực / Lấy thông tin user hiện tại qua Cookie
 exports.checkAuth = async (req, res) => {
   try {
-    // req.user được gán từ authMiddleware
     const user = await User.findById(req.user.id).select('-password');
     if (!user) {
       return res.status(404).json({ success: false, message: 'Không tìm thấy người dùng.' });
