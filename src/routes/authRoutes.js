@@ -13,9 +13,9 @@ router.post('/logout', authController.logout);
 router.get('/check', authMiddleware, authController.checkAuth);
 
 // Route lấy danh sách toàn bộ users (Dành cho Admin/Leader)
-router.get('/users', authMiddleware, roleMiddleware(['ADMIN', 'LEADER']), authController.getUsers);
+router.get('/users', authMiddleware, roleMiddleware('ADMIN', 'LEADER'), authController.getUsers);
 
 // Route cấp tài khoản (Dành cho Leader hoặc Admin)
-router.post('/create-leader', authMiddleware, roleMiddleware(['ADMIN', 'LEADER']), authController.register);
+router.post('/create-leader', authMiddleware, roleMiddleware('ADMIN', 'LEADER'), authController.register);
 
 module.exports = router;
